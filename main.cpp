@@ -2,8 +2,10 @@
 #include <cstddef>
 #include <cstdlib>
 #include <ctime>
+#include <iostream>
 #include <random>
 #include <raylib.h>
+#include <utility>
 #include <vector>
 
 // Randomness
@@ -29,27 +31,8 @@ float LyToPixelsY(double ly) {
   return static_cast<float>(ly * (WINDOW_HEIGHT / SIM_HEIGHT_LY));
 }
 
-// const double c = 299792458.0;
-
-// const double SIM_WIDTH_METERS = 1e11;
-// const double SIM_HEIGHT_METERS =
-//     SIM_WIDTH_METERS * (static_cast<double>(WINDOW_HEIGHT) / WINDOW_WIDTH);
-// const double METERS_TO_PIXELS = WINDOW_WIDTH / SIM_WIDTH_METERS;
-
 const int FPS = 60;
 double DT;
-
-// float MetersToPixels(double meters) {
-//   return static_cast<float>(meters * METERS_TO_PIXELS);
-// }
-//
-// double PixelsToMeters(double pixels) {
-//   return static_cast<double>(pixels) / METERS_TO_PIXELS;
-// }
-//
-// Vector2 PositionToPixels(Vector2 position) {
-//   return Vector2{MetersToPixels(position.x), MetersToPixels(position.y)};
-// }
 
 enum class StellarType {
   MainSequence,
@@ -93,6 +76,7 @@ public:
 
     mass = GetRandomFloat(0.5, 5) * SOLAR_MASS;
     radius = GetRandomFloat(1, 10);
+    // radius = GetRandomFloat(0.25, 1.0) * mass;
 
     color = GetStarColor();
 
@@ -196,6 +180,48 @@ void RenderStars(std::vector<Star> stars) {
   }
 }
 
+void HandleCollisions(std::vector<Star> &stars) {
+  for (size_t i = 0; i < stars.size(); ++i) {
+    for (size_t j = i + 1; j < stars.size(); ++j) {
+      if (!stars[i].active || !stars[j].active)
+        continue;
+
+      float screen_x1 = LyToPixelsX(stars[i].pos.x);
+      float screen_y1 = LyToPixelsY(stars[i].pos.y);
+      float screen_x2 = LyToPixelsX(stars[j].pos.x);
+      float screen_y2 = LyToPixelsY(stars[j].pos.y);
+
+      float dx = screen_x2 - screen_x1;
+      float dy = screen_y2 - screen_y1;
+      float dist_pixels = sqrt(dx * dx + dy * dy);
+
+      if (dist_pixels < (stars[i].radius + stars[j].radius)) {
+        Star *target = &stars[i];
+        Star *source = &stars[j];
+
+        if (source->radius > target->radius) {
+          std::swap(target, source);
+        }
+
+        target->vel.x =
+            (target->mass * target->vel.x + source->mass * source->vel.x) /
+            (target->mass + source->mass);
+        target->vel.y =
+            (target->mass * target->vel.y + source->mass * source->vel.y) /
+            (target->mass + source->mass);
+
+        target->mass += source->mass;
+        target->radius += source->radius * 0.2f;
+
+        if (target->radius > 30.0f)
+          target->radius = 30.0f;
+
+        source->active = false;
+      }
+    }
+  }
+}
+
 int main() {
   InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "N Body Simulation");
   SetTargetFPS(FPS);
@@ -223,6 +249,8 @@ int main() {
     for (Star &star : stars) {
       star.ResetForce();
     }
+
+    HandleCollisions(stars);
 
     for (size_t i = 0; i < star_amount; ++i) {
       for (size_t j = 0; j < star_amount; ++j) {
