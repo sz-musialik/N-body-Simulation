@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <iostream>
+#include <memory>
 #include <random>
 #include <raylib.h>
 #include <utility>
@@ -75,7 +76,7 @@ public:
     F = {0, 0};
 
     mass = GetRandomFloat(0.5, 5) * SOLAR_MASS;
-    radius = GetRandomFloat(1, 10);
+    radius = GetRandomFloat(1, 5);
     // radius = GetRandomFloat(0.25, 1.0) * mass;
 
     color = GetStarColor();
@@ -144,35 +145,35 @@ private:
   }
 };
 
-float Hypotenuse(Star *s1, Star *s2) {
-  float dx_ly = s1->pos.x - s2->pos.x;
-  float dy_ly = s1->pos.y - s2->pos.y;
+// float Hypotenuse(Star *s1, Star *s2) {
+//   float dx_ly = s1->pos.x - s2->pos.x;
+//   float dy_ly = s1->pos.y - s2->pos.y;
+//
+//   float dx_m = dx_ly * LY_TO_METERS;
+//   float dy_m = dy_ly * LY_TO_METERS;
+//
+//   return sqrt(dx_m * dx_m + dy_m * dy_m);
+// }
 
-  float dx_m = dx_ly * LY_TO_METERS;
-  float dy_m = dy_ly * LY_TO_METERS;
-
-  return sqrt(dx_m * dx_m + dy_m * dy_m);
-}
-
-void UpdateForce(Star *s1, Star *s2) {
-  if (!s1->active || !s2->active)
-    return;
-
-  float r_m = Hypotenuse(s1, s2);
-
-  // Prevents shooting the star off into space
-  float softening = 1e27;
-
-  // Scalar
-  float force = (G * s1->mass * s2->mass) / (r_m * r_m + softening);
-
-  // Force direction vector in meters
-  float dx_m = (s2->pos.x - s1->pos.x) * LY_TO_METERS;
-  float dy_m = (s2->pos.y - s1->pos.y) * LY_TO_METERS;
-
-  s1->F.x += force * (dx_m / r_m);
-  s1->F.y += force * (dy_m / r_m);
-}
+// void UpdateForce(Star *s1, Star *s2) {
+//   if (!s1->active || !s2->active)
+//     return;
+//
+//   float r_m = Hypotenuse(s1, s2);
+//
+//   // Prevents shooting the star off into space
+//   float softening = 1e27;
+//
+//   // Scalar
+//   float force = (G * s1->mass * s2->mass) / (r_m * r_m + softening);
+//
+//   // Force direction vector in meters
+//   float dx_m = (s2->pos.x - s1->pos.x) * LY_TO_METERS;
+//   float dy_m = (s2->pos.y - s1->pos.y) * LY_TO_METERS;
+//
+//   s1->F.x += force * (dx_m / r_m);
+//   s1->F.y += force * (dy_m / r_m);
+// }
 
 void RenderStars(std::vector<Star> stars) {
   for (auto &star : stars) {
@@ -217,16 +218,133 @@ void HandleCollisions(std::vector<Star> &stars) {
           target->radius = 30.0f;
 
         source->active = false;
+        // target->color = RED;
       }
     }
   }
 }
 
+struct QuadRegion {
+  double x;
+  double y;
+  double size;
+
+  bool Contains(Vector2 p) const {
+    return (p.x >= x && p.x < x + size && p.y >= y && p.y < y + size);
+  }
+};
+
+class QuadTreeNode {
+public:
+  QuadRegion region;
+  Star *star = nullptr;
+
+  double totalMass = 0.0;
+  Vector2 centerOfMass = {0.0f, 0.0f};
+
+  bool isDivided = false;
+  std::unique_ptr<QuadTreeNode> nw, ne, sw, se;
+
+  QuadTreeNode(QuadRegion reg) : region(reg) {}
+
+  void Subdivide() {
+    double subSize = region.size / 2.0;
+
+    nw =
+        std::make_unique<QuadTreeNode>(QuadRegion{region.x, region.y, subSize});
+    ne = std::make_unique<QuadTreeNode>(
+        QuadRegion{region.x + subSize, region.y, subSize});
+    sw = std::make_unique<QuadTreeNode>(
+        QuadRegion{region.x, region.y + subSize, subSize});
+    se = std::make_unique<QuadTreeNode>(
+        QuadRegion{region.x + subSize, region.y + subSize, subSize});
+
+    isDivided = true;
+  }
+
+  void Insert(Star *newStar) {
+    if (!newStar->active || !region.Contains(newStar->pos)) {
+      return;
+    }
+
+    if (totalMass == 0.0) {
+      totalMass = newStar->mass;
+      centerOfMass = newStar->pos;
+    } else {
+      double oldMass = totalMass;
+      totalMass += newStar->mass;
+
+      centerOfMass.x = static_cast<float>(
+          (centerOfMass.x * oldMass + newStar->pos.x * newStar->mass) /
+          totalMass);
+      centerOfMass.x = static_cast<float>(
+          (centerOfMass.y * oldMass + newStar->pos.y * newStar->mass) /
+          totalMass);
+    }
+
+    if (!isDivided && star == nullptr) {
+      star = newStar;
+      return;
+    }
+
+    if (!isDivided) {
+      Subdivide();
+
+      Star *existingStar = star;
+      star = nullptr;
+
+      nw->Insert(existingStar);
+      ne->Insert(existingStar);
+      sw->Insert(existingStar);
+      se->Insert(existingStar);
+    }
+
+    nw->Insert(newStar);
+    ne->Insert(newStar);
+    sw->Insert(newStar);
+    se->Insert(newStar);
+  }
+
+  void CalculateStarForce(Star *targetStar, double theta,
+                          double softening) const {
+    if (totalMass == 0.0 || !targetStar->active)
+      return;
+    if (star == targetStar)
+      return;
+
+    double dx_ly = centerOfMass.x - targetStar->pos.x;
+    double dy_ly = centerOfMass.y - targetStar->pos.y;
+    double dist_ly = sqrt(dx_ly * dx_ly + dy_ly * dy_ly);
+
+    if (dist_ly == 0.0)
+      return;
+
+    if (!isDivided || (region.size / dist_ly) < theta) {
+      // Conversion to meters
+      double r_m = dist_ly * LY_TO_METERS;
+      double dx_m = dx_ly * LY_TO_METERS;
+      double dy_m = dy_ly * LY_TO_METERS;
+
+      // Newton Force
+      double force =
+          (G * targetStar->mass * totalMass) / (r_m * r_m + softening);
+
+      targetStar->F.x += static_cast<float>(force * (dx_m / r_m));
+      targetStar->F.y += static_cast<float>(force * (dy_m / r_m));
+    } else {
+      nw->CalculateStarForce(targetStar, theta, softening);
+      ne->CalculateStarForce(targetStar, theta, softening);
+      sw->CalculateStarForce(targetStar, theta, softening);
+      se->CalculateStarForce(targetStar, theta, softening);
+    }
+  }
+};
+
 int main() {
   InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "N Body Simulation");
   SetTargetFPS(FPS);
 
-  unsigned int star_amount = 50;
+  unsigned int star_amount = 500;
 
   std::vector<Star> stars;
   for (size_t i = 0; i < star_amount; ++i) {
@@ -252,14 +370,35 @@ int main() {
 
     HandleCollisions(stars);
 
-    for (size_t i = 0; i < star_amount; ++i) {
-      for (size_t j = 0; j < star_amount; ++j) {
-        if (i == j)
-          continue;
-        UpdateForce(&stars[i], &stars[j]);
+    // Naive approach O(n^2)
+    // for (size_t i = 0; i < star_amount; ++i) {
+    //   for (size_t j = 0; j < star_amount; ++j) {
+    //     if (i == j)
+    //       continue;
+    //     UpdateForce(&stars[i], &stars[j]);
+    //   }
+    // }
+
+    QuadRegion boundary{0.0, 0.0, SIM_WIDTH_LY};
+    QuadTreeNode root(boundary);
+
+    for (Star &star : stars) {
+      if (star.active) {
+        root.Insert(&star);
       }
     }
 
+    // Force calculation using QuadTree
+    const double theta = 0.5;
+    const double softening = 1e27;
+
+    for (Star &star : stars) {
+      if (star.active) {
+        root.CalculateStarForce(&star, theta, softening);
+      }
+    }
+
+    // Acceleration, velocity and position update
     for (Star &star : stars) {
       star.Update(sim_dt);
     }
