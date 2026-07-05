@@ -13,13 +13,17 @@
 static std::random_device rd;
 static std::mt19937 gen(rd());
 
+// Replacement for uniform distribution in star mass generation
+static std::lognormal_distribution<double> mass_dist(0.0, 0.7);
+
 // Constants
 const int WINDOW_WIDTH = 1000;
 const int WINDOW_HEIGHT = 800;
 
 const double G = 6.6743e-11;
-const double LY_TO_METERS = 9.4607e15; // 1 rok świetlny w metrach
+const double LY_TO_METERS = 9.4607e15; // 1 Light year in meters
 const double SOLAR_MASS = 1.989e30;
+const double SOLAR_RADIUS = 6.9634e8;
 
 const double SIM_WIDTH_LY = 10.0;
 const double SIM_HEIGHT_LY =
@@ -48,6 +52,13 @@ double GetRandomFloat(float min, float max) {
   return dist(gen);
 };
 
+// Power scale
+float RadiusMetersToPixels(double radius_m) {
+  double mass_ratio = radius_m / SOLAR_RADIUS;
+
+  return 1.5f + static_cast<float>(pow(mass_ratio, 0.4) * 2.0);
+}
+
 class Star {
 public:
   // Raylibs Vector2 is of type [float, float]
@@ -57,8 +68,8 @@ public:
   Vector2 acc; // acceleration
   Vector2 F;   // Force
 
-  double mass;
-  double radius;
+  double mass;   // in kg
+  double radius; // in meters
   Color color;
   bool active;
   StellarType type;
@@ -75,9 +86,7 @@ public:
     acc = {0, 0};
     F = {0, 0};
 
-    mass = GetRandomFloat(0.5, 5) * SOLAR_MASS;
-    radius = GetRandomFloat(1, 5);
-    // radius = GetRandomFloat(0.25, 1.0) * mass;
+    InitializeMassRadius();
 
     color = GetStarColor();
 
@@ -89,7 +98,8 @@ public:
     if (!active)
       return;
 
-    DrawCircle(LyToPixelsX(pos.x), LyToPixelsY(pos.y), radius, color);
+    float radius_px = RadiusMetersToPixels(radius);
+    DrawCircle(LyToPixelsX(pos.x), LyToPixelsY(pos.y), radius_px, color);
   }
 
   void ResetForce() {
@@ -113,6 +123,20 @@ private:
   float minRadius = 1;
   float maxRadius = 10;
   float dt;
+
+  void InitializeMassRadius() {
+    double m_ratio = mass_dist(gen);
+    if (m_ratio < 0.1)
+      m_ratio = 0.1;
+
+    mass = m_ratio * SOLAR_MASS;
+
+    if (mass < SOLAR_MASS) {
+      radius = SOLAR_RADIUS * std::pow(m_ratio, 0.9);
+    } else {
+      radius = SOLAR_RADIUS * std::pow(m_ratio, 0.6);
+    }
+  }
 
   Color GetStarColor() {
     // Will eventually return/modify a color associated to its fields
@@ -196,7 +220,10 @@ void HandleCollisions(std::vector<Star> &stars) {
       float dy = screen_y2 - screen_y1;
       float dist_pixels = sqrt(dx * dx + dy * dy);
 
-      if (dist_pixels < (stars[i].radius + stars[j].radius)) {
+      float r1_px = RadiusMetersToPixels(stars[i].radius);
+      float r2_px = RadiusMetersToPixels(stars[j].radius);
+
+      if (dist_pixels < (r1_px + r2_px)) {
         Star *target = &stars[i];
         Star *source = &stars[j];
 
@@ -212,10 +239,14 @@ void HandleCollisions(std::vector<Star> &stars) {
             (target->mass + source->mass);
 
         target->mass += source->mass;
-        target->radius += source->radius * 0.2f;
 
-        if (target->radius > 30.0f)
-          target->radius = 30.0f;
+        // New radius depends on new mass
+        double new_mass_ratio = target->mass / SOLAR_MASS;
+        if (new_mass_ratio <= 1.0) {
+          target->radius = SOLAR_RADIUS * std::pow(new_mass_ratio, 0.9);
+        } else {
+          target->radius = SOLAR_RADIUS * std::pow(new_mass_ratio, 0.6);
+        }
 
         source->active = false;
         // target->color = RED;
@@ -277,7 +308,7 @@ public:
       centerOfMass.x = static_cast<float>(
           (centerOfMass.x * oldMass + newStar->pos.x * newStar->mass) /
           totalMass);
-      centerOfMass.x = static_cast<float>(
+      centerOfMass.y = static_cast<float>(
           (centerOfMass.y * oldMass + newStar->pos.y * newStar->mass) /
           totalMass);
     }
