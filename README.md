@@ -44,7 +44,7 @@ Distant clusters of stars are approximated as a single mass point.
 |--------|-------|
 | Zoom in/out | Mouse wheel |
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Requirements
 - C++17 compiler
