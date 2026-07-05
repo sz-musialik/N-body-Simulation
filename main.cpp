@@ -29,6 +29,12 @@ const double SIM_WIDTH_LY = 10.0;
 const double SIM_HEIGHT_LY =
     SIM_WIDTH_LY * (static_cast<double>(WINDOW_HEIGHT) / WINDOW_WIDTH);
 
+static Camera2D camera = {.offset = {WINDOW_WIDTH / 2.0f, WINDOW_HEIGHT / 2.0f},
+                          .target = {static_cast<float>(SIM_WIDTH_LY) / 2.0f,
+                                     static_cast<float>(SIM_HEIGHT_LY) / 2.0f},
+                          .rotation = 0.0f,
+                          .zoom = 50.0f};
+
 float LyToPixelsX(double ly) {
   return static_cast<float>(ly * (WINDOW_WIDTH / SIM_WIDTH_LY));
 }
@@ -56,7 +62,7 @@ double GetRandomFloat(float min, float max) {
 float RadiusMetersToPixels(double radius_m) {
   double mass_ratio = radius_m / SOLAR_RADIUS;
 
-  return 1.5f + static_cast<float>(pow(mass_ratio, 0.4) * 2.0);
+  return std::max(1.0f, static_cast<float>(pow(mass_ratio, 0.4) * 2.0));
 }
 
 class Star {
@@ -99,7 +105,7 @@ public:
       return;
 
     float radius_px = RadiusMetersToPixels(radius);
-    DrawCircle(LyToPixelsX(pos.x), LyToPixelsY(pos.y), radius_px, color);
+    DrawCircleV(pos, radius_px / camera.zoom, color);
   }
 
   void ResetForce() {
@@ -249,7 +255,7 @@ void HandleCollisions(std::vector<Star> &stars) {
         }
 
         source->active = false;
-        // target->color = RED;
+        target->color = RED;
       }
     }
   }
@@ -434,13 +440,24 @@ int main() {
       star.Update(sim_dt);
     }
 
+    // Zoom Handling
+    float wheel = GetMouseWheelMove();
+    if (wheel != 0) {
+      camera.zoom += wheel * 0.5f;
+
+      if (camera.zoom < 0.1f)
+        camera.zoom = 0.1f;
+    }
+
     BeginDrawing();
     ClearBackground(GetColor(0x000D20FF));
-    DrawFPS(10, 10);
 
     // Drawing Stars
+    BeginMode2D(camera);
     RenderStars(stars);
+    EndMode2D();
 
+    DrawFPS(10, 10);
     EndDrawing();
   }
 
