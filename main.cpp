@@ -377,6 +377,64 @@ public:
   }
 };
 
+QuadRegion CalculateQuadTreeBoundary(std::vector<Star> stars) {
+  double min_x = SIM_WIDTH_LY;
+  double max_x = 0.0;
+
+  double min_y = SIM_HEIGHT_LY;
+  double max_y = 0.0;
+
+  bool any_active = false;
+
+  for (const Star &star : stars) {
+    if (star.active) {
+      if (!any_active) {
+        min_x = star.pos.x;
+        max_x = star.pos.x;
+
+        min_y = star.pos.y;
+        max_y = star.pos.y;
+
+        any_active = true;
+      } else {
+        if (star.pos.x < min_x)
+          min_x = star.pos.x;
+        if (star.pos.x > max_x)
+          max_x = star.pos.x;
+        if (star.pos.y < min_y)
+          min_y = star.pos.y;
+        if (star.pos.y > max_y)
+          max_y = star.pos.y;
+      }
+    }
+  }
+
+  if (!any_active) {
+    min_x = 0;
+    max_x = SIM_WIDTH_LY;
+
+    min_y = 0;
+    max_y = SIM_HEIGHT_LY;
+  }
+
+  double width = max_x - min_x;
+  double height = max_y - min_y;
+
+  double max_size = std::max(width, height);
+
+  // In case all stars in the same point
+  if (max_size < 0.001)
+    max_size = 0.001;
+
+  double center_x = min_x + width / 2.0;
+  double center_y = min_y + height / 2.0;
+
+  QuadRegion boundary{center_x - (max_size * 1.01) / 2.0,
+                      center_y - (max_size * 1.01) / 2.0, max_size * 1.01};
+
+  return boundary;
+}
+
 int main() {
   InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "N Body Simulation");
   SetTargetFPS(FPS);
@@ -416,7 +474,7 @@ int main() {
     //   }
     // }
 
-    QuadRegion boundary{0.0, 0.0, SIM_WIDTH_LY};
+    QuadRegion boundary = CalculateQuadTreeBoundary(stars);
     QuadTreeNode root(boundary);
 
     for (Star &star : stars) {
