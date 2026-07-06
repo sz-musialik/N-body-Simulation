@@ -27,20 +27,12 @@ const double SOLAR_RADIUS = 6.9634e8;
 
 const double SIM_WIDTH_LY = 10.0;
 const double SIM_HEIGHT_LY = 10.0;
-const double SIM_DEPTH_LY = 10.0;
 
-static Camera3D camera = {.position = {5.0f, 5.0f, -15.0f},
-                          .target = {5.0f, 5.0f, 5.0f},
-                          .up = {0.0f, 1.0f, 0.0f},
-                          .fovy = 60.0f,
-                          .projection = CAMERA_PERSPECTIVE};
-
-// float LyToPixelsX(double ly) {
-//   return static_cast<float>(ly * (WINDOW_WIDTH / SIM_WIDTH_LY));
-// }
-// float LyToPixelsY(double ly) {
-//   return static_cast<float>(ly * (WINDOW_HEIGHT / SIM_HEIGHT_LY));
-// }
+static Camera2D camera = {.offset = {WINDOW_WIDTH / 2.0f, WINDOW_HEIGHT / 2.0f},
+                          .target = {static_cast<float>(SIM_WIDTH_LY) / 2.0f,
+                                     static_cast<float>(SIM_HEIGHT_LY) / 2.0f},
+                          .rotation = 0.0f,
+                          .zoom = 50.0f};
 
 const int FPS = 60;
 double DT;
@@ -69,10 +61,12 @@ float RadiusMetersToLy(double radius_m) {
 
 class Star {
 public:
-  Vector3 pos;
-  Vector3 vel;
-  Vector3 acc; // acceleration
-  Vector3 F;   // Force
+  // Raylibs Vector2 is of type [float, float]
+  // A custom Vec2 might be needed for better precision with double
+  Vector2 pos;
+  Vector2 vel;
+  Vector2 acc; // acceleration
+  Vector2 F;   // Force
 
   double mass;   // in kg
   double radius; // in meters
@@ -84,15 +78,13 @@ public:
     // Random position in light years
     pos.x = GetRandomFloat(0, SIM_WIDTH_LY);
     pos.y = GetRandomFloat(0, SIM_HEIGHT_LY);
-    pos.z = GetRandomFloat(0, SIM_DEPTH_LY);
 
     // Random velocity in m/s
     vel.x = GetRandomFloat(-20000, 20000);
     vel.y = GetRandomFloat(-20000, 20000);
-    vel.z = GetRandomFloat(-20000, 20000);
 
-    acc = {0, 0, 0};
-    F = {0, 0, 0};
+    acc = {0, 0};
+    F = {0, 0};
 
     InitializeMassRadius();
 
@@ -107,13 +99,12 @@ public:
       return;
 
     float radius_ly = RadiusMetersToLy(radius);
-    DrawSphere(pos, radius_ly, color);
+    DrawCircleV(pos, radius_ly, color);
   }
 
   void ResetForce() {
     F.x = 0;
     F.y = 0;
-    F.z = 0;
   }
 
   void Update(double sim_dt) {
@@ -128,6 +119,9 @@ public:
   }
 
 private:
+  float initVel = 100;
+  float minRadius = 1;
+  float maxRadius = 10;
   float dt;
 
   void InitializeMassRadius() {
@@ -156,7 +150,6 @@ private:
 
     vel.x = vel.x + acc.x * dt;
     vel.y = vel.y + acc.y * dt;
-    vel.z = vel.z + acc.z * dt;
   }
 
   void UpdateAcceleration() {
@@ -165,7 +158,6 @@ private:
 
     acc.x = F.x / mass;
     acc.y = F.y / mass;
-    acc.z = F.z / mass;
   }
 
   void UpdatePosition() {
@@ -174,7 +166,6 @@ private:
 
     pos.x += (vel.x * dt) / LY_TO_METERS;
     pos.y += (vel.y * dt) / LY_TO_METERS;
-    pos.z += (vel.z * dt) / LY_TO_METERS;
   }
 };
 
@@ -222,8 +213,7 @@ void HandleCollisions(std::vector<Star> &stars) {
 
       float dx = stars[i].pos.x - stars[j].pos.x;
       float dy = stars[i].pos.y - stars[j].pos.y;
-      float dz = stars[i].pos.z - stars[j].pos.z;
-      float dist_ly = sqrt(dx * dx + dy * dy + dz * dz);
+      float dist_ly = sqrt(dx * dx + dy * dy);
 
       float r1_ly = RadiusMetersToLy(stars[i].radius);
       float r2_ly = RadiusMetersToLy(stars[j].radius);
@@ -241,9 +231,6 @@ void HandleCollisions(std::vector<Star> &stars) {
             (target->mass + source->mass);
         target->vel.y =
             (target->mass * target->vel.y + source->mass * source->vel.y) /
-            (target->mass + source->mass);
-        target->vel.z =
-            (target->mass * target->vel.z + source->mass * source->vel.z) /
             (target->mass + source->mass);
 
         target->mass += source->mass;
@@ -263,52 +250,40 @@ void HandleCollisions(std::vector<Star> &stars) {
   }
 }
 
-struct OctreeRegion {
+struct QuadRegion {
   double x;
   double y;
-  double z;
   double size;
 
-  bool Contains(Vector3 p) const {
-    return (p.x >= x && p.x < x + size && p.y >= y && p.y < y + size &&
-            p.z >= z && p.z < z + size);
+  bool Contains(Vector2 p) const {
+    return (p.x >= x && p.x < x + size && p.y >= y && p.y < y + size);
   }
 };
 
-class OctreeNode {
+class QuadTreeNode {
 public:
-  OctreeRegion region;
+  QuadRegion region;
   Star *star = nullptr;
 
   double totalMass = 0.0;
-  Vector3 centerOfMass = {0.0f, 0.0f, 0.0f};
+  Vector2 centerOfMass = {0.0f, 0.0f};
 
   bool isDivided = false;
-  std::unique_ptr<OctreeNode> ftl, ftr, fbl, fbr;
-  std::unique_ptr<OctreeNode> btl, btr, bbl, bbr;
+  std::unique_ptr<QuadTreeNode> nw, ne, sw, se;
 
-  OctreeNode(OctreeRegion reg) : region(reg) {}
+  QuadTreeNode(QuadRegion reg) : region(reg) {}
 
   void Subdivide() {
     double subSize = region.size / 2.0;
 
-    ftl = std::make_unique<OctreeNode>(
-        OctreeRegion{region.x, region.y, region.z, subSize});
-    ftr = std::make_unique<OctreeNode>(
-        OctreeRegion{region.x + subSize, region.y, region.z, subSize});
-    fbl = std::make_unique<OctreeNode>(
-        OctreeRegion{region.x, region.y + subSize, region.z, subSize});
-    fbr = std::make_unique<OctreeNode>(OctreeRegion{
-        region.x + subSize, region.y + subSize, region.z, subSize});
-
-    btl = std::make_unique<OctreeNode>(
-        OctreeRegion{region.x, region.y, region.z + subSize, subSize});
-    btr = std::make_unique<OctreeNode>(OctreeRegion{
-        region.x + subSize, region.y, region.z + subSize, subSize});
-    bbl = std::make_unique<OctreeNode>(OctreeRegion{
-        region.x, region.y + subSize, region.z + subSize, subSize});
-    bbr = std::make_unique<OctreeNode>(OctreeRegion{
-        region.x + subSize, region.y + subSize, region.z + subSize, subSize});
+    nw =
+        std::make_unique<QuadTreeNode>(QuadRegion{region.x, region.y, subSize});
+    ne = std::make_unique<QuadTreeNode>(
+        QuadRegion{region.x + subSize, region.y, subSize});
+    sw = std::make_unique<QuadTreeNode>(
+        QuadRegion{region.x, region.y + subSize, subSize});
+    se = std::make_unique<QuadTreeNode>(
+        QuadRegion{region.x + subSize, region.y + subSize, subSize});
 
     isDivided = true;
   }
@@ -331,9 +306,6 @@ public:
       centerOfMass.y = static_cast<float>(
           (centerOfMass.y * oldMass + newStar->pos.y * newStar->mass) /
           totalMass);
-      centerOfMass.z = static_cast<float>(
-          (centerOfMass.z * oldMass + newStar->pos.z * newStar->mass) /
-          totalMass);
     }
 
     if (!isDivided && star == nullptr) {
@@ -347,26 +319,16 @@ public:
       Star *existingStar = star;
       star = nullptr;
 
-      ftl->Insert(existingStar);
-      ftr->Insert(existingStar);
-      fbl->Insert(existingStar);
-      fbr->Insert(existingStar);
-
-      btl->Insert(existingStar);
-      btr->Insert(existingStar);
-      bbl->Insert(existingStar);
-      bbr->Insert(existingStar);
+      nw->Insert(existingStar);
+      ne->Insert(existingStar);
+      sw->Insert(existingStar);
+      se->Insert(existingStar);
     }
 
-    ftl->Insert(newStar);
-    ftr->Insert(newStar);
-    fbl->Insert(newStar);
-    fbr->Insert(newStar);
-
-    btl->Insert(newStar);
-    btr->Insert(newStar);
-    bbl->Insert(newStar);
-    bbr->Insert(newStar);
+    nw->Insert(newStar);
+    ne->Insert(newStar);
+    sw->Insert(newStar);
+    se->Insert(newStar);
   }
 
   void CalculateStarForce(Star *targetStar, double theta,
@@ -378,8 +340,7 @@ public:
 
     double dx_ly = centerOfMass.x - targetStar->pos.x;
     double dy_ly = centerOfMass.y - targetStar->pos.y;
-    double dz_ly = centerOfMass.z - targetStar->pos.z;
-    double dist_ly = sqrt(dx_ly * dx_ly + dy_ly * dy_ly + dz_ly * dz_ly);
+    double dist_ly = sqrt(dx_ly * dx_ly + dy_ly * dy_ly);
 
     if (dist_ly == 0.0)
       return;
@@ -389,7 +350,6 @@ public:
       double r_m = dist_ly * LY_TO_METERS;
       double dx_m = dx_ly * LY_TO_METERS;
       double dy_m = dy_ly * LY_TO_METERS;
-      double dz_m = dz_ly * LY_TO_METERS;
 
       // Newton Force
       double force =
@@ -397,30 +357,21 @@ public:
 
       targetStar->F.x += static_cast<float>(force * (dx_m / r_m));
       targetStar->F.y += static_cast<float>(force * (dy_m / r_m));
-      targetStar->F.z += static_cast<float>(force * (dz_m / r_m));
     } else {
-      ftl->CalculateStarForce(targetStar, theta, softening);
-      ftr->CalculateStarForce(targetStar, theta, softening);
-      fbl->CalculateStarForce(targetStar, theta, softening);
-      fbr->CalculateStarForce(targetStar, theta, softening);
-
-      btl->CalculateStarForce(targetStar, theta, softening);
-      btr->CalculateStarForce(targetStar, theta, softening);
-      bbl->CalculateStarForce(targetStar, theta, softening);
-      bbr->CalculateStarForce(targetStar, theta, softening);
+      nw->CalculateStarForce(targetStar, theta, softening);
+      ne->CalculateStarForce(targetStar, theta, softening);
+      sw->CalculateStarForce(targetStar, theta, softening);
+      se->CalculateStarForce(targetStar, theta, softening);
     }
   }
 };
 
-OctreeRegion CalculateOctreeBoundary(std::vector<Star> stars) {
+QuadRegion CalculateQuadTreeBoundary(std::vector<Star> stars) {
   double min_x = SIM_WIDTH_LY;
   double max_x = 0.0;
 
   double min_y = SIM_HEIGHT_LY;
   double max_y = 0.0;
-
-  double min_z = SIM_HEIGHT_LY;
-  double max_z = 0.0;
 
   bool any_active = false;
 
@@ -433,25 +384,16 @@ OctreeRegion CalculateOctreeBoundary(std::vector<Star> stars) {
         min_y = star.pos.y;
         max_y = star.pos.y;
 
-        min_z = star.pos.z;
-        max_z = star.pos.z;
-
         any_active = true;
       } else {
         if (star.pos.x < min_x)
           min_x = star.pos.x;
         if (star.pos.x > max_x)
           max_x = star.pos.x;
-
         if (star.pos.y < min_y)
           min_y = star.pos.y;
         if (star.pos.y > max_y)
           max_y = star.pos.y;
-
-        if (star.pos.z < min_z)
-          min_z = star.pos.z;
-        if (star.pos.z > max_z)
-          max_z = star.pos.z;
       }
     }
   }
@@ -462,17 +404,12 @@ OctreeRegion CalculateOctreeBoundary(std::vector<Star> stars) {
 
     min_y = 0;
     max_y = SIM_HEIGHT_LY;
-
-    min_z = 0;
-    max_z = SIM_HEIGHT_LY;
   }
 
   double width = max_x - min_x;
   double height = max_y - min_y;
-  double depth = max_z - min_z;
 
   double max_size = std::max(width, height);
-  max_size = std::max(max_size, depth);
 
   // In case all stars in the same point
   if (max_size < 0.001)
@@ -480,11 +417,9 @@ OctreeRegion CalculateOctreeBoundary(std::vector<Star> stars) {
 
   double center_x = min_x + width / 2.0;
   double center_y = min_y + height / 2.0;
-  double center_z = min_z + depth / 2.0;
 
-  OctreeRegion boundary{center_x - (max_size * 1.01) / 2.0,
-                        center_y - (max_size * 1.01) / 2.0,
-                        center_z - (max_size * 1.01) / 2.0, max_size * 1.01};
+  QuadRegion boundary{center_x - (max_size * 1.01) / 2.0,
+                      center_y - (max_size * 1.01) / 2.0, max_size * 1.01};
 
   return boundary;
 }
@@ -492,8 +427,6 @@ OctreeRegion CalculateOctreeBoundary(std::vector<Star> stars) {
 int main() {
   InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "N Body Simulation");
   SetTargetFPS(FPS);
-
-  DisableCursor();
 
   unsigned int star_amount = 500;
 
@@ -530,8 +463,8 @@ int main() {
     //   }
     // }
 
-    OctreeRegion boundary = CalculateOctreeBoundary(stars);
-    OctreeNode root(boundary);
+    QuadRegion boundary = CalculateQuadTreeBoundary(stars);
+    QuadTreeNode root(boundary);
 
     for (Star &star : stars) {
       if (star.active) {
@@ -554,21 +487,30 @@ int main() {
       star.Update(sim_dt);
     }
 
-    // Camera handling
-    // First Person
-    // UpdateCamera(&camera, CAMERA_FIRST_PERSON);
+    // TODO: Move handling navigation to a separate function
+    // Zoom Handling
+    float wheel = GetMouseWheelMove();
+    if (wheel != 0) {
+      camera.zoom += wheel * 5.0f;
 
-    // Showcase
-    UpdateCamera(&camera, CAMERA_ORBITAL);
+      if (camera.zoom < 0.1f)
+        camera.zoom = 0.1f;
+    }
+
+    // Pan Handling
+    if (IsMouseButtonDown(MOUSE_MIDDLE_BUTTON)) {
+      Vector2 delta = GetMouseDelta();
+      camera.target.x -= delta.x / camera.zoom;
+      camera.target.y -= delta.y / camera.zoom;
+    }
 
     BeginDrawing();
     ClearBackground(GetColor(0x000309FF));
 
     // Drawing Stars
-    BeginMode3D(camera);
+    BeginMode2D(camera);
     RenderStars(stars);
-    // DrawGrid(10, 1.0f);
-    EndMode3D();
+    EndMode2D();
 
     // DrawFPS(10, 10);
     EndDrawing();
