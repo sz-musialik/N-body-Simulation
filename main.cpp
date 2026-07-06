@@ -498,24 +498,32 @@ int main() {
       star.Update(sim_dt);
     }
 
+    // TODO: Move handling navigation to a separate function
     // Zoom Handling
     float wheel = GetMouseWheelMove();
     if (wheel != 0) {
-      camera.zoom += wheel * 0.5f;
+      camera.zoom += wheel * 5.0f;
 
       if (camera.zoom < 0.1f)
         camera.zoom = 0.1f;
     }
 
+    // Pan Handling
+    if (IsMouseButtonDown(MOUSE_MIDDLE_BUTTON)) {
+      Vector2 delta = GetMouseDelta();
+      camera.target.x -= delta.x / camera.zoom;
+      camera.target.y -= delta.y / camera.zoom;
+    }
+
     BeginDrawing();
-    ClearBackground(GetColor(0x000D20FF));
+    ClearBackground(GetColor(0x000309FF));
 
     // Drawing Stars
     BeginMode2D(camera);
     RenderStars(stars);
     EndMode2D();
 
-    DrawFPS(10, 10);
+    // DrawFPS(10, 10);
     EndDrawing();
   }
 
