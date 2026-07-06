@@ -24,9 +24,10 @@ The project simulates simplified galactic dynamics with performance optimization
 
 ### Camera System
 - Zoom in/out support
+- Pan the camera
 
 ## Screenshots
-<img width="1000" height="800" alt="obraz" src="https://github.com/user-attachments/assets/7c658d7e-0fb0-413a-8c28-b5f8e6f00a23" />
+<img width="1000" height="800" alt="evolution" src="https://github.com/user-attachments/assets/2992b44a-deeb-4d48-8e44-a25391d85607" />
 <p align="center">
   <em><b>Figure 2.</b> Merged stars</em>
 </p>
@@ -34,7 +35,7 @@ The project simulates simplified galactic dynamics with performance optimization
 ## Algorithm
 This project uses the **Barnes–Hut approximation** to reduce computational complexity
 - Naive approach: **O(n²)**
-- Barnes–Hut: ~**O(n log n)**
+- Barnes-Hut: ~**O(n log n)**
 
 The simulation space is recursively divided into quadrants using a quadtree structure.  
 Distant clusters of stars are approximated as a single mass point.
@@ -43,6 +44,7 @@ Distant clusters of stars are approximated as a single mass point.
 | Action | Input |
 |--------|-------|
 | Zoom in/out | Mouse wheel |
+| Pan | Middle Mouse Button + Drag |
 
 ## Getting Started
 
