@@ -58,11 +58,13 @@ double GetRandomFloat(float min, float max) {
   return dist(gen);
 };
 
-// Power scale
-float RadiusMetersToPixels(double radius_m) {
+// Radius translated from meters to Light Years [world scale]
+float RadiusMetersToLy(double radius_m) {
   double mass_ratio = radius_m / SOLAR_RADIUS;
 
-  return std::max(1.0f, static_cast<float>(pow(mass_ratio, 0.4) * 2.0));
+  float base_ly = 0.02f;
+
+  return base_ly * static_cast<float>(pow(mass_ratio, 0.4));
 }
 
 class Star {
@@ -104,8 +106,8 @@ public:
     if (!active)
       return;
 
-    float radius_px = RadiusMetersToPixels(radius);
-    DrawCircleV(pos, radius_px / camera.zoom, color);
+    float radius_ly = RadiusMetersToLy(radius);
+    DrawCircleV(pos, radius_ly, color);
   }
 
   void ResetForce() {
@@ -217,19 +219,14 @@ void HandleCollisions(std::vector<Star> &stars) {
       if (!stars[i].active || !stars[j].active)
         continue;
 
-      float screen_x1 = LyToPixelsX(stars[i].pos.x);
-      float screen_y1 = LyToPixelsY(stars[i].pos.y);
-      float screen_x2 = LyToPixelsX(stars[j].pos.x);
-      float screen_y2 = LyToPixelsY(stars[j].pos.y);
+      float dx = stars[i].pos.x - stars[j].pos.x;
+      float dy = stars[i].pos.y - stars[j].pos.y;
+      float dist_ly = sqrt(dx * dx + dy * dy);
 
-      float dx = screen_x2 - screen_x1;
-      float dy = screen_y2 - screen_y1;
-      float dist_pixels = sqrt(dx * dx + dy * dy);
+      float r1_ly = RadiusMetersToLy(stars[i].radius);
+      float r2_ly = RadiusMetersToLy(stars[j].radius);
 
-      float r1_px = RadiusMetersToPixels(stars[i].radius);
-      float r2_px = RadiusMetersToPixels(stars[j].radius);
-
-      if (dist_pixels < (r1_px + r2_px)) {
+      if (dist_ly < (r1_ly + r2_ly)) {
         Star *target = &stars[i];
         Star *source = &stars[j];
 
