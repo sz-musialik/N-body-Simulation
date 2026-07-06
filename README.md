@@ -52,13 +52,13 @@ Distant clusters of stars are approximated as a single mass point.
 - Make
 
 ### Clone repository
-```
+```bash
 git clone https://github.com/sz-musialik/N-body-Simulation.git
 cd N-body-Simulation
 ```
 
 ### Build and Run
-```
+```bash
 make run
 ```
-_This project assumes the default Raylib installation directory on Windows `(C:/raylib/raylib/src)`._
+_This project assumes the default Raylib installation directory on Windows (`C:/raylib/raylib/src`)._
