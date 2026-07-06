@@ -1,5 +1,5 @@
 ﻿# N Body simulation
-A 2D gravitational **N-body simulation** of stars built in **C++** using **Raylib**.  
+A 2D and 3D gravitational **N-body simulation** of stars built in **C++** using **Raylib**.  
 The project simulates simplified galactic dynamics with performance optimization using the **Barnes–Hut algorithm**.
 
 <img width="1000" height="800" alt="obraz" src="https://github.com/user-attachments/assets/463784ca-6589-48e8-841c-780d09258587" />
@@ -9,7 +9,7 @@ The project simulates simplified galactic dynamics with performance optimization
 
 ## Features
 ### Physics Simulation
-- Gravitational N-body simulation in 2D
+- Gravitational N-body simulation in 2D (`2d_simulation.cpp`) and 3D (`main.cpp`)
 - **Barnes–Hut algorithm** for optimized force calculations
 - Randomized star masses
 - Realistic interaction-based motion
@@ -17,19 +17,25 @@ The project simulates simplified galactic dynamics with performance optimization
 
 ### Simulation scale
 - 1 second of real time = **5000 years** of simulation time
-- Stars scaled using power-law scaling relative to the Sun's radius
+- Stars scaled using the factor of 0.2 Light Years and a power-law scaling relative to the Sun's radius
 
 ### Visualization
-- Merged stars dynamically colored
+Merged stars are dynamically colored
 
 ### Camera System
 - Zoom in/out support
-- Pan the camera
+- Pan the camera in 2D simulation
+- Orbital or first person camera movement in 3D simulation
 
 ## Simulation
 <img width="1000" height="800" alt="evolution" src="https://github.com/user-attachments/assets/2992b44a-deeb-4d48-8e44-a25391d85607" />
 <p align="center">
-  <em><b>Figure 2.</b> Merged stars</em>
+  <em><b>Figure 2.</b>Merged stars in 2D simulation</em>
+</p>
+
+<img width="1000" height="800" alt="evolution3d" src="https://github.com/user-attachments/assets/2ff94b17-886c-401a-935d-8b2f874ad459" />
+<p align="center">
+  <em><b>Figure 3.</b>Merged stars in 3D simulation with an orbital camera</em>
 </p>
 
 ## Algorithm
@@ -44,7 +50,7 @@ Distant clusters of stars are approximated as a single mass point.
 | Action | Input |
 |--------|-------|
 | Zoom in/out | Mouse wheel |
-| Pan | Middle Mouse Button + Drag |
+| Pan (2D) | Middle Mouse Button + Drag |
 
 ## Getting Started
 
