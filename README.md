@@ -26,7 +26,7 @@ The project simulates simplified galactic dynamics with performance optimization
 - Zoom in/out support
 - Pan the camera
 
-## Screenshots
+## Simulation
 <img width="1000" height="800" alt="evolution" src="https://github.com/user-attachments/assets/2992b44a-deeb-4d48-8e44-a25391d85607" />
 <p align="center">
   <em><b>Figure 2.</b> Merged stars</em>
