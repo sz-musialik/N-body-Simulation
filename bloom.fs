@@ -17,11 +17,11 @@ void main()
     vec4 sum = vec4(0.0);
 
     // Simple bloom filter (Box/Gaussian approximation)
-    for (int x = -3; x < 3; x++) {
-        for (int y = -3; y < 3; y++) {
+    for (int x = -3; x <= 3; x++) {
+        for (int y = -3; y <= 3; y++) {
             sum += texture2D(texture0, fragTexCoord + vec2(x, y)*0.002);
         }
     }
 
-    finalColor = source + (sum*sum) * 0.001;
+    finalColor = source + sum* 0.01;
 }

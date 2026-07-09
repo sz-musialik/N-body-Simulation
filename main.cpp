@@ -671,7 +671,7 @@ int main() {
                    Vector2{0, 0}, WHITE);
     EndShaderMode();
 
-    DrawFPS(10, 10);
+    // DrawFPS(10, 10);
 
     int active_stars = 0;
     // Active stars
