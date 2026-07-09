@@ -451,7 +451,7 @@ public:
 
         const auto &childRegion = pool[childIdx].region;
         bool overlap =
-            (targetStar->pos.x + radius_ly >= childRegion.size &&
+            (targetStar->pos.x + radius_ly >= childRegion.x &&
              targetStar->pos.x - radius_ly <=
                  childRegion.x + childRegion.size) &&
             (targetStar->pos.y + radius_ly >= childRegion.y &&
