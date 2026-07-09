@@ -548,7 +548,7 @@ OctreeRegion CalculateOctreeBoundary(const std::vector<Star> &stars) {
 
 int main() {
   InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "N Body Simulation");
-  // SetTargetFPS(FPS);
+  SetTargetFPS(FPS);
 
   DisableCursor();
 
@@ -566,6 +566,11 @@ int main() {
   Mesh sphereMesh = GenMeshSphere(1.0f, 8, 8);
 
   Shader lightingShader = LoadShader("lighting.vs", "lighting.fs");
+
+  // nullptr uses default raylib vertex shader
+  Shader bloomShader = LoadShader(nullptr, "bloom.fs");
+
+  RenderTexture2D target = LoadRenderTexture(WINDOW_WIDTH, WINDOW_HEIGHT);
 
   lightingShader.locs[SHADER_LOC_MATRIX_MODEL] =
       GetShaderLocationAttrib(lightingShader, "instanceTransform");
@@ -641,19 +646,32 @@ int main() {
     // Showcase
     UpdateCamera(&camera, CAMERA_ORBITAL);
 
-    BeginDrawing();
+    // Texture rendering in memory
+    BeginTextureMode(target);
     ClearBackground(GetColor(0x000309FF));
 
-    // Drawing Stars
     BeginMode3D(camera);
-
     RenderStarsInstanced(stars, sphereMesh, sphereMaterial, instanceColorLoc);
 
     DrawCubeWiresV({5.0f, 5.0f, 5.0f}, {10.0f, 10.0f, 10.0f},
                    GetColor(0xFFFFFF22));
-    EndMode3D();
 
-    // DrawFPS(10, 10);
+    EndMode3D();
+    EndTextureMode();
+
+    // Screen rendering
+    BeginDrawing();
+    ClearBackground(BLACK);
+
+    BeginShaderMode(bloomShader);
+    // OpenGL's texture are flipped vertically hence -height
+    DrawTextureRec(target.texture,
+                   Rectangle{0, 0, static_cast<float>(target.texture.width),
+                             static_cast<float>(-target.texture.height)},
+                   Vector2{0, 0}, WHITE);
+    EndShaderMode();
+
+    DrawFPS(10, 10);
 
     int active_stars = 0;
     // Active stars
@@ -666,8 +684,14 @@ int main() {
     DrawText(TextFormat("Stars amount: %i", active_stars), 10, 32, 16, WHITE);
     EndDrawing();
   }
+
+  // Unloading shaders and meshes
+
   UnloadMesh(sphereMesh);
   UnloadShader(lightingShader);
+
+  UnloadRenderTexture(target);
+  UnloadShader(bloomShader);
 
   CloseWindow();
   return 0;
