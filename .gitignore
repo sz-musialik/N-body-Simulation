@@ -7,6 +7,10 @@
 *.o
 *.obj
 
+# Profiling files
+Instrumentor.hpp
+results.json
+
 # Precompiled Headers
 *.gch
 *.pch

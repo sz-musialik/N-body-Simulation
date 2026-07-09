@@ -1,20 +1,22 @@
+// clang-format off
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
 #include <ctime>
-#include <iostream>
-#include <memory>
 #include <random>
 #include <raylib.h>
 #include <utility>
 #include <vector>
+#include "raymath.h"
+// clang-format on
 
 // Randomness
 static std::random_device rd;
 static std::mt19937 gen(rd());
 
-// Replacement for uniform distribution in star mass generation
-static std::lognormal_distribution<double> mass_dist(0.0, 0.7);
+// static std::lognormal_distribution<double> mass_dist(0.0, 0.7);
+static std::normal_distribution<double> mass_dist(0.0, 10);
 
 // Constants
 const int WINDOW_WIDTH = 1000;
@@ -34,13 +36,6 @@ static Camera3D camera = {.position = {5.0f, 5.0f, -15.0f},
                           .up = {0.0f, 1.0f, 0.0f},
                           .fovy = 60.0f,
                           .projection = CAMERA_PERSPECTIVE};
-
-// float LyToPixelsX(double ly) {
-//   return static_cast<float>(ly * (WINDOW_WIDTH / SIM_WIDTH_LY));
-// }
-// float LyToPixelsY(double ly) {
-//   return static_cast<float>(ly * (WINDOW_HEIGHT / SIM_HEIGHT_LY));
-// }
 
 const int FPS = 60;
 double DT;
@@ -102,12 +97,12 @@ public:
     type = StellarType::MainSequence;
   }
 
-  void Draw() {
-    if (!active)
-      return;
-
+  Matrix GetTransformMatrix() const {
     float radius_ly = RadiusMetersToLy(radius);
-    DrawSphere(pos, radius_ly, color);
+    Matrix scale = MatrixScale(radius_ly, radius_ly, radius_ly);
+    Matrix translation = MatrixTranslate(pos.x, pos.y, pos.z);
+
+    return MatrixMultiply(scale, translation);
   }
 
   void ResetForce() {
@@ -178,6 +173,46 @@ private:
   }
 };
 
+void RenderStarsInstanced(const std::vector<Star> &stars, Mesh sphereMesh,
+                          Material sphereMaterial, int colorLoc) {
+  static std::vector<Matrix> whiteStars;
+  static std::vector<Matrix> redStars;
+
+  whiteStars.clear();
+  redStars.clear();
+
+  whiteStars.reserve(stars.size());
+  redStars.reserve(stars.size());
+
+  for (const auto &star : stars) {
+    if (star.active) {
+      Matrix tx = star.GetTransformMatrix();
+
+      if (star.color.r == RED.r && star.color.g == RED.g &&
+          star.color.b == RED.b) {
+        redStars.push_back(tx);
+      } else if (star.color.r == WHITE.r && star.color.g == WHITE.g &&
+                 star.color.b == WHITE.b) {
+        whiteStars.push_back(tx);
+      }
+    }
+  }
+
+  if (!whiteStars.empty()) {
+    float color[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    SetShaderValue(sphereMaterial.shader, colorLoc, color, SHADER_UNIFORM_VEC4);
+    DrawMeshInstanced(sphereMesh, sphereMaterial, whiteStars.data(),
+                      whiteStars.size());
+  }
+
+  if (!redStars.empty()) {
+    float color[4] = {1.0f, 0.0f, 0.0f, 1.0f};
+    SetShaderValue(sphereMaterial.shader, colorLoc, color, SHADER_UNIFORM_VEC4);
+    DrawMeshInstanced(sphereMesh, sphereMaterial, redStars.data(),
+                      redStars.size());
+  }
+}
+
 // float Hypotenuse(Star *s1, Star *s2) {
 //   float dx_ly = s1->pos.x - s2->pos.x;
 //   float dy_ly = s1->pos.y - s2->pos.y;
@@ -208,61 +243,6 @@ private:
 //   s1->F.y += force * (dy_m / r_m);
 // }
 
-void RenderStars(std::vector<Star> stars) {
-  for (auto &star : stars) {
-    star.Draw();
-  }
-}
-
-void HandleCollisions(std::vector<Star> &stars) {
-  for (size_t i = 0; i < stars.size(); ++i) {
-    for (size_t j = i + 1; j < stars.size(); ++j) {
-      if (!stars[i].active || !stars[j].active)
-        continue;
-
-      float dx = stars[i].pos.x - stars[j].pos.x;
-      float dy = stars[i].pos.y - stars[j].pos.y;
-      float dz = stars[i].pos.z - stars[j].pos.z;
-      float dist_ly = sqrt(dx * dx + dy * dy + dz * dz);
-
-      float r1_ly = RadiusMetersToLy(stars[i].radius);
-      float r2_ly = RadiusMetersToLy(stars[j].radius);
-
-      if (dist_ly < (r1_ly + r2_ly)) {
-        Star *target = &stars[i];
-        Star *source = &stars[j];
-
-        if (source->radius > target->radius) {
-          std::swap(target, source);
-        }
-
-        target->vel.x =
-            (target->mass * target->vel.x + source->mass * source->vel.x) /
-            (target->mass + source->mass);
-        target->vel.y =
-            (target->mass * target->vel.y + source->mass * source->vel.y) /
-            (target->mass + source->mass);
-        target->vel.z =
-            (target->mass * target->vel.z + source->mass * source->vel.z) /
-            (target->mass + source->mass);
-
-        target->mass += source->mass;
-
-        // New radius depends on new mass
-        double new_mass_ratio = target->mass / SOLAR_MASS;
-        if (new_mass_ratio <= 1.0) {
-          target->radius = SOLAR_RADIUS * std::pow(new_mass_ratio, 0.9);
-        } else {
-          target->radius = SOLAR_RADIUS * std::pow(new_mass_ratio, 0.6);
-        }
-
-        source->active = false;
-        target->color = RED;
-      }
-    }
-  }
-}
-
 struct OctreeRegion {
   double x;
   double y;
@@ -284,39 +264,45 @@ public:
   Vector3 centerOfMass = {0.0f, 0.0f, 0.0f};
 
   bool isDivided = false;
-  std::unique_ptr<OctreeNode> ftl, ftr, fbl, fbr;
-  std::unique_ptr<OctreeNode> btl, btr, bbl, bbr;
+  std::array<int, 8> children;
 
-  OctreeNode(OctreeRegion reg) : region(reg) {}
+  OctreeNode(OctreeRegion reg) : region(reg) {
+    children.fill(-1); // -1 means no child
+  }
 
-  void Subdivide() {
+  void Subdivide(std::vector<OctreeNode> &pool) {
     double subSize = region.size / 2.0;
 
-    ftl = std::make_unique<OctreeNode>(
-        OctreeRegion{region.x, region.y, region.z, subSize});
-    ftr = std::make_unique<OctreeNode>(
-        OctreeRegion{region.x + subSize, region.y, region.z, subSize});
-    fbl = std::make_unique<OctreeNode>(
-        OctreeRegion{region.x, region.y + subSize, region.z, subSize});
-    fbr = std::make_unique<OctreeNode>(OctreeRegion{
-        region.x + subSize, region.y + subSize, region.z, subSize});
+    int firstChildIdx = static_cast<int>(pool.size());
 
-    btl = std::make_unique<OctreeNode>(
-        OctreeRegion{region.x, region.y, region.z + subSize, subSize});
-    btr = std::make_unique<OctreeNode>(OctreeRegion{
-        region.x + subSize, region.y, region.z + subSize, subSize});
-    bbl = std::make_unique<OctreeNode>(OctreeRegion{
-        region.x, region.y + subSize, region.z + subSize, subSize});
-    bbr = std::make_unique<OctreeNode>(OctreeRegion{
-        region.x + subSize, region.y + subSize, region.z + subSize, subSize});
+    pool.push_back(
+        OctreeNode(OctreeRegion{region.x, region.y, region.z, subSize}));
+    pool.push_back(OctreeNode(
+        OctreeRegion{region.x + subSize, region.y, region.z, subSize}));
+    pool.push_back(OctreeNode(
+        OctreeRegion{region.x, region.y + subSize, region.z, subSize}));
+    pool.push_back(OctreeNode(OctreeRegion{
+        region.x + subSize, region.y + subSize, region.z, subSize}));
+
+    pool.push_back(OctreeNode(
+        OctreeRegion{region.x, region.y, region.z + subSize, subSize}));
+    pool.push_back(OctreeNode(OctreeRegion{region.x + subSize, region.y,
+                                           region.z + subSize, subSize}));
+    pool.push_back(OctreeNode(OctreeRegion{region.x, region.y + subSize,
+                                           region.z + subSize, subSize}));
+    pool.push_back(OctreeNode(OctreeRegion{
+        region.x + subSize, region.y + subSize, region.z + subSize, subSize}));
+
+    for (size_t i = 0; i < 8; i++) {
+      children[i] = firstChildIdx + i;
+    }
 
     isDivided = true;
   }
 
-  void Insert(Star *newStar) {
-    if (!newStar->active || !region.Contains(newStar->pos)) {
+  void Insert(Star *newStar, std::vector<OctreeNode> &pool) {
+    if (!newStar->active || !region.Contains(newStar->pos))
       return;
-    }
 
     if (totalMass == 0.0) {
       totalMass = newStar->mass;
@@ -341,38 +327,36 @@ public:
       return;
     }
 
+    if (region.size < 0.001)
+      return;
+
     if (!isDivided) {
-      Subdivide();
+      Subdivide(pool);
 
       Star *existingStar = star;
       star = nullptr;
 
-      ftl->Insert(existingStar);
-      ftr->Insert(existingStar);
-      fbl->Insert(existingStar);
-      fbr->Insert(existingStar);
-
-      btl->Insert(existingStar);
-      btr->Insert(existingStar);
-      bbl->Insert(existingStar);
-      bbr->Insert(existingStar);
+      for (int childIdx : children) {
+        if (pool[childIdx].region.Contains(existingStar->pos)) {
+          pool[childIdx].Insert(existingStar, pool);
+          break; // Star can be only in 1 subregion
+        }
+      }
     }
 
-    ftl->Insert(newStar);
-    ftr->Insert(newStar);
-    fbl->Insert(newStar);
-    fbr->Insert(newStar);
-
-    btl->Insert(newStar);
-    btr->Insert(newStar);
-    bbl->Insert(newStar);
-    bbr->Insert(newStar);
+    for (int childIdx : children) {
+      if (pool[childIdx].region.Contains(newStar->pos)) {
+        pool[childIdx].Insert(newStar, pool);
+        break;
+      }
+    }
   }
 
-  void CalculateStarForce(Star *targetStar, double theta,
-                          double softening) const {
+  void CalculateStarForce(Star *targetStar, double theta, double softening,
+                          const std::vector<OctreeNode> &pool) const {
     if (totalMass == 0.0 || !targetStar->active)
       return;
+
     if (star == targetStar)
       return;
 
@@ -381,10 +365,10 @@ public:
     double dz_ly = centerOfMass.z - targetStar->pos.z;
     double dist_ly = sqrt(dx_ly * dx_ly + dy_ly * dy_ly + dz_ly * dz_ly);
 
-    if (dist_ly == 0.0)
+    if (dist_ly < 1e-6)
       return;
 
-    if (!isDivided || (region.size / dist_ly) < theta) {
+    if (!isDivided || (region.size / dist_ly) < theta || region.size < 0.001) {
       // Conversion to meters
       double r_m = dist_ly * LY_TO_METERS;
       double dx_m = dx_ly * LY_TO_METERS;
@@ -399,20 +383,93 @@ public:
       targetStar->F.y += static_cast<float>(force * (dy_m / r_m));
       targetStar->F.z += static_cast<float>(force * (dz_m / r_m));
     } else {
-      ftl->CalculateStarForce(targetStar, theta, softening);
-      ftr->CalculateStarForce(targetStar, theta, softening);
-      fbl->CalculateStarForce(targetStar, theta, softening);
-      fbr->CalculateStarForce(targetStar, theta, softening);
+      for (int childIdx : children) {
+        if (childIdx != -1) {
+          pool[childIdx].CalculateStarForce(targetStar, theta, softening, pool);
+        }
+      }
+    }
+  }
 
-      btl->CalculateStarForce(targetStar, theta, softening);
-      btr->CalculateStarForce(targetStar, theta, softening);
-      bbl->CalculateStarForce(targetStar, theta, softening);
-      bbr->CalculateStarForce(targetStar, theta, softening);
+  void CheckCollisionWithTree(Star *targetStar,
+                              const std::vector<OctreeNode> &pool) {
+    if (totalMass == 0.0 || !targetStar->active)
+      return;
+
+    if (!isDivided && star != nullptr && star != targetStar) {
+      if (!star->active)
+        return;
+
+      float dx = targetStar->pos.x - star->pos.x;
+      float dy = targetStar->pos.y - star->pos.y;
+      float dz = targetStar->pos.z - star->pos.z;
+      float dist_ly = sqrt(dx * dx + dy * dy + dz * dz);
+
+      float r1_ly = RadiusMetersToLy(targetStar->radius);
+      float r2_ly = RadiusMetersToLy(star->radius);
+
+      if (dist_ly < (r1_ly + r2_ly)) {
+        Star *target = targetStar;
+        Star *source = star;
+
+        if (source->radius > target->radius) {
+          std::swap(target, source);
+        }
+
+        target->vel.x =
+            (target->mass * target->vel.x + source->mass * source->vel.x) /
+            (target->mass + source->mass);
+        target->vel.y =
+            (target->mass * target->vel.y + source->mass * source->vel.y) /
+            (target->mass + source->mass);
+        target->vel.z =
+            (target->mass * target->vel.z + source->mass * source->vel.z) /
+            (target->mass + source->mass);
+
+        target->mass += source->mass;
+
+        double new_mass_ratio = target->mass / SOLAR_MASS;
+
+        if (new_mass_ratio <= 1.0) {
+          target->radius = SOLAR_RADIUS * std::pow(new_mass_ratio, 0.9);
+        } else {
+          target->radius = SOLAR_RADIUS * std::pow(new_mass_ratio, 0.6);
+        }
+
+        source->active = false;
+        target->color = RED;
+      }
+      return;
+    }
+
+    if (isDivided) {
+      float radius_ly = RadiusMetersToLy(targetStar->radius);
+
+      for (int childIdx : children) {
+        if (childIdx == -1)
+          continue;
+
+        const auto &childRegion = pool[childIdx].region;
+        bool overlap =
+            (targetStar->pos.x + radius_ly >= childRegion.size &&
+             targetStar->pos.x - radius_ly <=
+                 childRegion.x + childRegion.size) &&
+            (targetStar->pos.y + radius_ly >= childRegion.y &&
+             targetStar->pos.y - radius_ly <=
+                 childRegion.y + childRegion.size) &&
+            (targetStar->pos.z + radius_ly >= childRegion.z &&
+             targetStar->pos.z - radius_ly <= childRegion.z + childRegion.size);
+
+        if (overlap) {
+          const_cast<OctreeNode &>(pool[childIdx])
+              .CheckCollisionWithTree(targetStar, pool);
+        }
+      }
     }
   }
 };
 
-OctreeRegion CalculateOctreeBoundary(std::vector<Star> stars) {
+OctreeRegion CalculateOctreeBoundary(const std::vector<Star> &stars) {
   double min_x = SIM_WIDTH_LY;
   double max_x = 0.0;
 
@@ -491,17 +548,33 @@ OctreeRegion CalculateOctreeBoundary(std::vector<Star> stars) {
 
 int main() {
   InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "N Body Simulation");
-  SetTargetFPS(FPS);
+  // SetTargetFPS(FPS);
 
   DisableCursor();
 
-  unsigned int star_amount = 500;
+  unsigned int star_amount = 2000;
 
   std::vector<Star> stars;
   for (size_t i = 0; i < star_amount; ++i) {
     Star star;
     stars.push_back(star);
   }
+
+  std::vector<OctreeNode> nodePool;
+  nodePool.reserve(star_amount * 2);
+
+  Mesh sphereMesh = GenMeshSphere(1.0f, 8, 8);
+
+  Shader lightingShader = LoadShader("lighting.vs", "lighting.fs");
+
+  lightingShader.locs[SHADER_LOC_MATRIX_MODEL] =
+      GetShaderLocationAttrib(lightingShader, "instanceTransform");
+
+  int instanceColorLoc = GetShaderLocation(lightingShader, "u_color");
+
+  Material sphereMaterial = LoadMaterialDefault();
+  sphereMaterial.shader = lightingShader;
+  sphereMaterial.maps[MATERIAL_MAP_DIFFUSE].color = WHITE;
 
   while (!WindowShouldClose()) {
     double dt = GetFrameTime();
@@ -514,12 +587,10 @@ int main() {
     double time_scale = 5000.0 * 365.0 * 24.0 * 3600.0;
     double sim_dt = dt * time_scale;
 
-    // Updating Stars
+    // Force reset
     for (Star &star : stars) {
       star.ResetForce();
     }
-
-    HandleCollisions(stars);
 
     // Naive approach O(n^2)
     // for (size_t i = 0; i < star_amount; ++i) {
@@ -531,21 +602,30 @@ int main() {
     // }
 
     OctreeRegion boundary = CalculateOctreeBoundary(stars);
-    OctreeNode root(boundary);
+
+    nodePool.clear();
+    nodePool.push_back(OctreeNode(boundary));
 
     for (Star &star : stars) {
       if (star.active) {
-        root.Insert(&star);
+        nodePool[0].Insert(&star, nodePool);
       }
     }
 
-    // Force calculation using QuadTree
+    // Collision handling
+    for (Star &star : stars) {
+      if (star.active) {
+        nodePool[0].CheckCollisionWithTree(&star, nodePool);
+      }
+    }
+
+    // Force calculation using Octree
     const double theta = 0.5;
     const double softening = 1e27;
 
     for (Star &star : stars) {
       if (star.active) {
-        root.CalculateStarForce(&star, theta, softening);
+        nodePool[0].CalculateStarForce(&star, theta, softening, nodePool);
       }
     }
 
@@ -566,13 +646,28 @@ int main() {
 
     // Drawing Stars
     BeginMode3D(camera);
-    RenderStars(stars);
-    // DrawGrid(10, 1.0f);
+
+    RenderStarsInstanced(stars, sphereMesh, sphereMaterial, instanceColorLoc);
+
+    DrawCubeWiresV({5.0f, 5.0f, 5.0f}, {10.0f, 10.0f, 10.0f},
+                   GetColor(0xFFFFFF22));
     EndMode3D();
 
     // DrawFPS(10, 10);
+
+    int active_stars = 0;
+    // Active stars
+    for (const auto &star : stars) {
+      if (star.active) {
+        active_stars++;
+      }
+    }
+
+    DrawText(TextFormat("Stars amount: %i", active_stars), 10, 32, 16, WHITE);
     EndDrawing();
   }
+  UnloadMesh(sphereMesh);
+  UnloadShader(lightingShader);
 
   CloseWindow();
   return 0;
