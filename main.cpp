@@ -476,7 +476,7 @@ OctreeRegion CalculateOctreeBoundary(const std::vector<Star> &stars) {
   double min_y = SIM_HEIGHT_LY;
   double max_y = 0.0;
 
-  double min_z = SIM_HEIGHT_LY;
+  double min_z = SIM_DEPTH_LY;
   double max_z = 0.0;
 
   bool any_active = false;
@@ -521,7 +521,7 @@ OctreeRegion CalculateOctreeBoundary(const std::vector<Star> &stars) {
     max_y = SIM_HEIGHT_LY;
 
     min_z = 0;
-    max_z = SIM_HEIGHT_LY;
+    max_z = SIM_DEPTH_LY;
   }
 
   double width = max_x - min_x;
