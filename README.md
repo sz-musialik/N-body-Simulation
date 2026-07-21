@@ -4,7 +4,7 @@ The project simulates simplified galactic dynamics with performance optimization
 
 <img width="1000" height="800" alt="obraz" src="https://github.com/user-attachments/assets/463784ca-6589-48e8-841c-780d09258587" />
 <p align="center">
-  <em><b>Figure 1.</b> Beginning of the simulation</em>
+  <b>Figure 1.</b> Beginning of the simulation.
 </p>
 
 ## Features
@@ -33,18 +33,18 @@ The project simulates simplified galactic dynamics with performance optimization
 ## Simulation
 <img width="1000" height="800" alt="evolution" src="https://github.com/user-attachments/assets/2992b44a-deeb-4d48-8e44-a25391d85607" />
 <p align="center">
-  <b>Figure 2. </b>Merged stars in 2D simulation
+  <b>Figure 2. </b>Merged stars in 2D simulation.
 </p>
 
 <img width="1000" height="800" alt="evolution3d" src="https://github.com/user-attachments/assets/2ff94b17-886c-401a-935d-8b2f874ad459" />
 <p align="center">
-  <b>Figure 3. </b>Merged stars in 3D simulation with an orbital camera
+  <b>Figure 3. </b>Merged stars in 3D simulation with an orbital camera.
 </p>
 
 <img width="1000" height="800" alt="evolution_3d_gpu_instancing" src="https://github.com/user-attachments/assets/6fe7d2fd-32c3-47d0-b7f1-af8cb7760235" />
 
 <p align="center">
-  <b>Figure 4. </b>3D simulation with 2000 stars using GPU instancing
+  <b>Figure 4. </b>3D simulation with 2000 stars using GPU instancing.
 </p>
 
 ## Algorithm
